@@ -651,7 +651,7 @@ function sendJson(
                 "GET, OPTIONS",
 
             "Access-Control-Allow-Headers":
-                "Content-Type"
+                "*"
         }
     );
 
@@ -664,198 +664,210 @@ function sendJson(
 
 
 /* ============================================================
-   HTTP SERVER
+   HTTP SERVER & HANDLER
 ============================================================ */
 
-const server =
-    http.createServer(
-        async (req, res) => {
+async function handleRequest(req, res) {
 
-            /*
-             * ------------------------------------------------
-             * CORS
-             * ------------------------------------------------
-             */
+    if (latestPrice === null) {
+        await initializePrice();
+    }
 
-            res.setHeader(
-                "Access-Control-Allow-Origin",
-                "*"
-            );
+    /*
+     * ------------------------------------------------
+     * CORS
+     * ------------------------------------------------
+     */
 
-            res.setHeader(
-                "Access-Control-Allow-Methods",
-                "GET, OPTIONS"
-            );
+    res.setHeader(
+        "Access-Control-Allow-Origin",
+        "*"
+    );
 
-            res.setHeader(
-                "Access-Control-Allow-Headers",
-                "Content-Type"
-            );
+    res.setHeader(
+        "Access-Control-Allow-Methods",
+        "GET, OPTIONS"
+    );
 
-
-            /*
-             * ------------------------------------------------
-             * OPTIONS / PREFLIGHT
-             * ------------------------------------------------
-             */
-
-            if (req.method === "OPTIONS") {
-
-                res.writeHead(
-                    204
-                );
-
-                res.end();
-
-                return;
-
-            }
-
-
-            /*
-             * ------------------------------------------------
-             * PRICE API
-             * ------------------------------------------------
-             */
-
-            if (
-                req.url.startsWith("/api/price") &&
-                req.method === "GET"
-            ) {
-
-                sendJson(
-                    res,
-                    200,
-                    {
-                        success: true,
-
-                        /*
-                         * Current dropped price
-                         */
-                        price:
-                            latestPrice,
-
-                        /*
-                         * Permanent opening price
-                         */
-                        openingPrice:
-                            openingPrice,
-
-                        currency:
-                            "GBP",
-
-                        updatedAt:
-                            latestUpdatedAt
-                    }
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * ------------------------------------------------
-             * HEALTH CHECK
-             * ------------------------------------------------
-             */
-
-            if (
-                req.url === "/" &&
-                req.method === "GET"
-            ) {
-
-                sendJson(
-                    res,
-                    200,
-                    {
-                        success: true,
-
-                        message:
-                            "Auction API is running",
-
-                        price:
-                            latestPrice,
-
-                        openingPrice:
-                            openingPrice,
-
-                        currency:
-                            "GBP",
-
-                        updatedAt:
-                            latestUpdatedAt
-                    }
-                );
-
-                return;
-
-            }
-
-
-            /*
-             * ------------------------------------------------
-             * 404
-             * ------------------------------------------------
-             */
-
-            sendJson(
-                res,
-                404,
-                {
-                    success: false,
-
-                    message:
-                        "Endpoint not found"
-                }
-            );
-
-        }
+    res.setHeader(
+        "Access-Control-Allow-Headers",
+        "*"
     );
 
 
+    /*
+     * ------------------------------------------------
+     * OPTIONS / PREFLIGHT
+     * ------------------------------------------------
+     */
+
+    if (req.method === "OPTIONS") {
+
+        res.writeHead(
+            204,
+            {
+                "Access-Control-Allow-Origin": "*",
+                "Access-Control-Allow-Methods": "GET, OPTIONS",
+                "Access-Control-Allow-Headers": "*"
+            }
+        );
+
+        res.end();
+
+        return;
+
+    }
+
+
+
+    /*
+     * ------------------------------------------------
+     * PRICE API
+     * ------------------------------------------------
+     */
+
+    if (
+        req.url.startsWith("/api/price") &&
+        req.method === "GET"
+    ) {
+
+        sendJson(
+            res,
+            200,
+            {
+                success: true,
+
+                /*
+                 * Current dropped price
+                 */
+                price:
+                    latestPrice,
+
+                /*
+                 * Permanent opening price
+                 */
+                openingPrice:
+                    openingPrice,
+
+                currency:
+                    "GBP",
+
+                updatedAt:
+                    latestUpdatedAt
+            }
+        );
+
+        return;
+
+    }
+
+
+    /*
+     * ------------------------------------------------
+     * HEALTH CHECK
+     * ------------------------------------------------
+     */
+
+    if (
+        req.url === "/" || req.url === "" &&
+        req.method === "GET"
+    ) {
+
+        sendJson(
+            res,
+            200,
+            {
+                success: true,
+
+                message:
+                    "Auction API is running",
+
+                price:
+                    latestPrice,
+
+                openingPrice:
+                    openingPrice,
+
+                currency:
+                    "GBP",
+
+                updatedAt:
+                    latestUpdatedAt
+            }
+        );
+
+        return;
+
+    }
+
+
+    /*
+     * ------------------------------------------------
+     * 404
+     * ------------------------------------------------
+     */
+
+    sendJson(
+        res,
+        404,
+        {
+            success: false,
+
+            message:
+                "Endpoint not found"
+        }
+    );
+
+}
+
+export default handleRequest;
+
+const server = http.createServer(handleRequest);
+
+
 /* ============================================================
-   START SERVER
+   START SERVER (LOCAL DEVELOPMENT)
 ============================================================ */
 
 const PORT =
     process.env.PORT || 3000;
 
+if (!process.env.VERCEL) {
+    server.listen(
+        PORT,
+        async () => {
 
-server.listen(
-    PORT,
-    async () => {
-
-        console.log(
-            `Auction API running on http://localhost:${PORT}`
-        );
-
-
-        /*
-         * Load current Shopify price
-         * before starting cron.
-         */
-        await initializePrice();
+            console.log(
+                `Auction API running on http://localhost:${PORT}`
+            );
 
 
-        /*
-         * ----------------------------------------------------
-         * TEST MODE
-         *
-         * Every 5 seconds
-         * ----------------------------------------------------
-         */
-
-        cron.schedule(
-            "*/5 * * * * *",
-            dropPrice
-        );
+            /*
+             * Load current Shopify price
+             * before starting cron.
+             */
+            await initializePrice();
 
 
-        /*
-         * Run first price drop immediately
-         */
-        await dropPrice();
+            /*
+             * ----------------------------------------------------
+             * TEST MODE
+             *
+             * Every 5 seconds
+             * ----------------------------------------------------
+             */
 
-    }
-);
+            cron.schedule(
+                "*/5 * * * * *",
+                dropPrice
+            );
+
+
+            /*
+             * Run first price drop immediately
+             */
+            await dropPrice();
+
+        }
+    );
+}
