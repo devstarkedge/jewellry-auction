@@ -50,14 +50,8 @@ if (!SHOPIFY_VARIANT_ID) {
    CONFIG
 ============================================================ */
 
-const minPrice = Number(MIN_PRICE);
 const dropMin = Number(DROP_MIN);
 const dropMax = Number(DROP_MAX);
-const dropEveryHours = Number(DROP_EVERY_HOURS);
-
-if (!Number.isFinite(minPrice)) {
-    throw new Error("MIN_PRICE must be a valid number");
-}
 
 if (!Number.isFinite(dropMin)) {
     throw new Error("DROP_MIN must be a valid number");
@@ -90,6 +84,8 @@ const graphqlUrl =
 
 let latestPrice = null;
 let openingPrice = null;
+let minPriceState = null;
+let dropEveryHoursState = null;
 let latestUpdatedAt = null;
 
 
@@ -150,6 +146,27 @@ async function shopifyGraphQL(query, variables = {}) {
 
 
 /* ============================================================
+   PRODUCT METAFIELD HELPER
+============================================================ */
+
+function getProductMetafieldNumber(variant, fieldName, envFallback) {
+    /*
+     * Fetch strictly from Product Metafield
+     */
+    const productMeta = variant.product?.[fieldName]?.value;
+
+    const rawVal = productMeta ?? envFallback;
+
+    if (rawVal === undefined || rawVal === null || rawVal === "") {
+        return null;
+    }
+
+    const num = Number(rawVal);
+    return Number.isFinite(num) ? num : null;
+}
+
+
+/* ============================================================
    GET VARIANT
 ============================================================ */
 
@@ -179,6 +196,12 @@ async function getVariant() {
                 product {
                     id
                     title
+                    reservePriceMetafield: metafield(namespace: "custom", key: "reserve_price") {
+                        value
+                    }
+                    dropEveryHoursMetafield: metafield(namespace: "custom", key: "drop_every_hours") {
+                        value
+                    }
                 }
 
             }
@@ -334,6 +357,63 @@ function roundPrice(price) {
 
 
 /* ============================================================
+   DYNAMIC CRON SCHEDULER
+============================================================ */
+
+let activeCronTask = null;
+let activeCronSchedule = null;
+
+function updateCronSchedule(hours) {
+
+    /*
+     * If TEST_MODE=true in .env, run every 5 seconds for rapid testing
+     */
+    if (process.env.TEST_MODE === "true") {
+
+        const testExpr = "*/5 * * * * *";
+
+        if (activeCronSchedule === testExpr) {
+            return;
+        }
+
+        if (activeCronTask) {
+            activeCronTask.stop();
+        }
+
+        console.log("Cron scheduled: Every 5 seconds (TEST_MODE=true)");
+
+        activeCronTask = cron.schedule(testExpr, dropPrice);
+        activeCronSchedule = testExpr;
+        return;
+
+    }
+
+
+    /*
+     * Schedule dynamically based on product metafield custom.drop_every_hours
+     */
+    const validHours = Math.max(1, Math.floor(Number(hours) || 1));
+    const cronExpr = `0 */${validHours} * * *`;
+
+    if (activeCronSchedule === cronExpr) {
+        return;
+    }
+
+    if (activeCronTask) {
+        activeCronTask.stop();
+    }
+
+    console.log(
+        `Cron scheduled: Every ${validHours} hour(s) (${cronExpr}) based on product metafield custom.drop_every_hours`
+    );
+
+    activeCronTask = cron.schedule(cronExpr, dropPrice);
+    activeCronSchedule = cronExpr;
+
+}
+
+
+/* ============================================================
    PRICE UPDATE JOB
 ============================================================ */
 
@@ -342,6 +422,38 @@ async function dropPrice() {
     try {
 
         const variant = await getVariant();
+
+
+        /*
+         * ----------------------------------------------------
+         * DYNAMIC PRODUCT METAFIELDS RESOLUTION
+         *
+         * MIN_PRICE        -> product.custom.reserve_price
+         * DROP_EVERY_HOURS -> product.custom.drop_every_hours
+         * ----------------------------------------------------
+         */
+
+        const resolvedMinPrice = getProductMetafieldNumber(
+            variant,
+            "reservePriceMetafield",
+            process.env.MIN_PRICE
+        );
+
+        const minPrice = resolvedMinPrice !== null ? resolvedMinPrice : 0;
+
+
+        const resolvedDropEveryHours = getProductMetafieldNumber(
+            variant,
+            "dropEveryHoursMetafield",
+            process.env.DROP_EVERY_HOURS
+        );
+
+        const dropEveryHours = resolvedDropEveryHours !== null ? resolvedDropEveryHours : 6;
+
+
+        minPriceState = minPrice;
+        dropEveryHoursState = dropEveryHours;
+        updateCronSchedule(dropEveryHours);
 
 
         /*
@@ -416,9 +528,9 @@ async function dropPrice() {
          * Example:
          *
          * Opening = £5,000
-         * Minimum = £950
+         * Minimum = £950 (from custom.reserve_price)
          *
-         * When current reaches £950,
+         * When current reaches minPrice,
          * next cycle starts again from £5,000.
          * ----------------------------------------------------
          */
@@ -430,7 +542,7 @@ async function dropPrice() {
 
 
             console.log(
-                `Minimum price reached. Restarting from opening price: £${permanentOpeningPrice}`
+                `Minimum price (£${minPrice}) reached. Restarting from opening price: £${permanentOpeningPrice}`
             );
 
         }
@@ -520,7 +632,7 @@ async function dropPrice() {
          */
 
         console.log(
-            `Price updated: £${basePrice} → £${latestPrice} | Opening: £${openingPrice}`
+            `Price updated: £${basePrice} → £${latestPrice} | Opening: £${openingPrice} | Min Price (custom.reserve_price): £${minPrice} | Drop Every: ${dropEveryHours}h`
         );
 
 
@@ -546,6 +658,28 @@ async function initializePrice() {
 
         const variant =
             await getVariant();
+
+
+        const resolvedMinPrice = getProductMetafieldNumber(
+            variant,
+            "reservePriceMetafield",
+            process.env.MIN_PRICE
+        );
+
+        const minPrice = resolvedMinPrice !== null ? resolvedMinPrice : 0;
+
+
+        const resolvedDropEveryHours = getProductMetafieldNumber(
+            variant,
+            "dropEveryHoursMetafield",
+            process.env.DROP_EVERY_HOURS
+        );
+
+        const dropEveryHours = resolvedDropEveryHours !== null ? resolvedDropEveryHours : 6;
+
+
+        minPriceState = minPrice;
+        dropEveryHoursState = dropEveryHours;
 
 
         latestPrice =
@@ -602,6 +736,14 @@ async function initializePrice() {
 
         console.log(
             `Current price: £${latestPrice}`
+        );
+
+        console.log(
+            `Min price (custom.reserve_price): £${minPriceState}`
+        );
+
+        console.log(
+            `Drop interval (custom.drop_every_hours): ${dropEveryHoursState}h`
         );
 
 
@@ -749,6 +891,18 @@ async function handleRequest(req, res) {
                 openingPrice:
                     openingPrice,
 
+                /*
+                 * Reserve / Min price from metafield custom.reserve_price
+                 */
+                minPrice:
+                    minPriceState,
+
+                /*
+                 * Drop interval from metafield custom.drop_every_hours
+                 */
+                dropEveryHours:
+                    dropEveryHoursState,
+
                 currency:
                     "GBP",
 
@@ -787,6 +941,12 @@ async function handleRequest(req, res) {
 
                 openingPrice:
                     openingPrice,
+
+                minPrice:
+                    minPriceState,
+
+                dropEveryHours:
+                    dropEveryHoursState,
 
                 currency:
                     "GBP",
@@ -844,29 +1004,15 @@ if (!process.env.VERCEL) {
 
             /*
              * Load current Shopify price
-             * before starting cron.
+             * and schedule cron dynamically.
              */
             await initializePrice();
 
 
             /*
-             * ----------------------------------------------------
-             * TEST MODE
-             *
-             * Every 5 seconds
-             * ----------------------------------------------------
+             * Schedule cron job based on custom.drop_every_hours metafield
              */
-
-            cron.schedule(
-                "*/5 * * * * *",
-                dropPrice
-            );
-
-
-            /*
-             * Run first price drop immediately
-             */
-            await dropPrice();
+            updateCronSchedule(dropEveryHoursState);
 
         }
     );
