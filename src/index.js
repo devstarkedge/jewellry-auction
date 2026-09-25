@@ -357,58 +357,57 @@ function roundPrice(price) {
 
 
 /* ============================================================
-   DYNAMIC CRON SCHEDULER
+   DYNAMIC TIMER SCHEDULER (SECONDS)
 ============================================================ */
 
-let activeCronTask = null;
-let activeCronSchedule = null;
+let activeIntervalTimer = null;
+let activeIntervalSeconds = null;
 
-function updateCronSchedule(hours) {
+function updateIntervalSchedule(secondsVal) {
 
     /*
      * If TEST_MODE=true in .env, run every 5 seconds for rapid testing
      */
     if (process.env.TEST_MODE === "true") {
 
-        const testExpr = "*/5 * * * * *";
+        const testSec = 5;
 
-        if (activeCronSchedule === testExpr) {
+        if (activeIntervalSeconds === testSec && activeIntervalTimer) {
             return;
         }
 
-        if (activeCronTask) {
-            activeCronTask.stop();
+        if (activeIntervalTimer) {
+            clearInterval(activeIntervalTimer);
         }
 
-        console.log("Cron scheduled: Every 5 seconds (TEST_MODE=true)");
+        console.log("Timer scheduled: Every 5 seconds (TEST_MODE=true)");
 
-        activeCronTask = cron.schedule(testExpr, dropPrice);
-        activeCronSchedule = testExpr;
+        activeIntervalTimer = setInterval(dropPrice, testSec * 1000);
+        activeIntervalSeconds = testSec;
         return;
 
     }
 
 
     /*
-     * Schedule dynamically based on product metafield custom.drop_every_hours
+     * Dynamic interval in SECONDS based on product metafield custom.drop_every_hours
      */
-    const validHours = Math.max(1, Math.floor(Number(hours) || 1));
-    const cronExpr = `0 */${validHours} * * *`;
+    const seconds = Math.max(1, Math.floor(Number(secondsVal) || 5));
 
-    if (activeCronSchedule === cronExpr) {
+    if (activeIntervalSeconds === seconds && activeIntervalTimer) {
         return;
     }
 
-    if (activeCronTask) {
-        activeCronTask.stop();
+    if (activeIntervalTimer) {
+        clearInterval(activeIntervalTimer);
     }
 
     console.log(
-        `Cron scheduled: Every ${validHours} hour(s) (${cronExpr}) based on product metafield custom.drop_every_hours`
+        `Timer scheduled: Every ${seconds} second(s) based on product metafield custom.drop_every_hours`
     );
 
-    activeCronTask = cron.schedule(cronExpr, dropPrice);
-    activeCronSchedule = cronExpr;
+    activeIntervalTimer = setInterval(dropPrice, seconds * 1000);
+    activeIntervalSeconds = seconds;
 
 }
 
@@ -453,7 +452,7 @@ async function dropPrice() {
 
         minPriceState = minPrice;
         dropEveryHoursState = dropEveryHours;
-        updateCronSchedule(dropEveryHours);
+        updateIntervalSchedule(dropEveryHours);
 
 
         /*
@@ -632,7 +631,7 @@ async function dropPrice() {
          */
 
         console.log(
-            `Price updated: £${basePrice} → £${latestPrice} | Opening: £${openingPrice} | Min Price (custom.reserve_price): £${minPrice} | Drop Every: ${dropEveryHours}h`
+            `Price updated: £${basePrice} → £${latestPrice} | Opening: £${openingPrice} | Min Price (custom.reserve_price): £${minPrice} | Drop Every: ${dropEveryHours}s`
         );
 
 
@@ -743,7 +742,7 @@ async function initializePrice() {
         );
 
         console.log(
-            `Drop interval (custom.drop_every_hours): ${dropEveryHoursState}h`
+            `Drop interval (custom.drop_every_hours): ${dropEveryHoursState}s`
         );
 
 
@@ -898,9 +897,9 @@ async function handleRequest(req, res) {
                     minPriceState,
 
                 /*
-                 * Drop interval from metafield custom.drop_every_hours
+                 * Drop interval from metafield custom.drop_every_hours (in seconds)
                  */
-                dropEveryHours:
+                dropEverySeconds:
                     dropEveryHoursState,
 
                 currency:
@@ -945,7 +944,7 @@ async function handleRequest(req, res) {
                 minPrice:
                     minPriceState,
 
-                dropEveryHours:
+                dropEverySeconds:
                     dropEveryHoursState,
 
                 currency:
@@ -1000,15 +999,15 @@ if (!process.env.VERCEL) {
 
             /*
              * Load current Shopify price
-             * and schedule cron dynamically.
+             * and schedule timer dynamically (seconds).
              */
             await initializePrice();
 
 
             /*
-             * Schedule cron job based on custom.drop_every_hours metafield
+             * Schedule timer job based on custom.drop_every_hours metafield (seconds)
              */
-            updateCronSchedule(dropEveryHoursState);
+            updateIntervalSchedule(dropEveryHoursState);
 
         }
     );
