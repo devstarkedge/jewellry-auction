@@ -17,9 +17,8 @@ export const loader = async ({ request }) => {
   const shop = url.searchParams.get("shop");
 
   if (!handle || !shop) {
-    // Fallback: If no handle/shop passed, return success with default structure for testing
     return Response.json(
-      { success: true, price: 0, currentPrice: 0, openingPrice: 0 },
+      { success: true, isAuctionRunning: false, price: 0, currentPrice: 0, openingPrice: 0 },
       { headers: corsHeaders }
     );
   }
@@ -36,7 +35,9 @@ export const loader = async ({ request }) => {
             variants(first: 1) {
               edges {
                 node {
+                  id
                   price
+                  compareAtPrice
                 }
               }
             }
@@ -68,7 +69,11 @@ export const loader = async ({ request }) => {
       );
     }
 
-    const defaultOpeningPrice = parseFloat(product.variants?.edges?.[0]?.node?.price || "0");
+    const variantNode = product.variants?.edges?.[0]?.node;
+    const shopifyPrice = parseFloat(variantNode?.price || "0");
+    const shopifyCompareAt = parseFloat(variantNode?.compareAtPrice || "0");
+
+    const defaultOpeningPrice = shopifyCompareAt > 0 ? shopifyCompareAt : shopifyPrice;
     const reservePriceFromCustom = product.customReservePrice?.value ? parseFloat(product.customReservePrice.value) : null;
     const priceDropFromCustom = product.customPriceDropAmount?.value ? parseFloat(product.customPriceDropAmount.value) : null;
     const dropEveryHoursFromCustom = product.customDropEveryHours?.value ? parseFloat(product.customDropEveryHours.value) : null;
@@ -92,17 +97,17 @@ export const loader = async ({ request }) => {
           priceDropIntervalValue: parsed.priceDropIntervalValue ?? (dropEveryHoursFromCustom ?? 5),
           priceDropIntervalUnit: parsed.priceDropIntervalUnit || (dropEveryHoursFromCustom !== null ? "Hours" : "Minutes"),
           priceDrop: priceDropFromCustom ?? (parsed.priceDrop ?? 0),
-          isAuctionRunning: parsed.isAuctionRunning ?? false,
+          isAuctionRunning: Boolean(parsed.isAuctionRunning),
           auctionStartTime: parsed.auctionStartTime ?? null,
         };
       } catch (e) {}
     }
 
-    // Calculate live auction state
-    let currentPrice = auctionData.openingAuctionPrice;
+    let currentPrice = shopifyPrice;
     let nextDropInSeconds = 0;
     let hasReachedReserve = false;
 
+    // Only calculate dynamic drop price if auction is ACTIVE and running
     if (auctionData.isAuctionRunning && auctionData.auctionStartTime) {
       const now = Date.now();
       const elapsedMs = Math.max(0, now - auctionData.auctionStartTime);
@@ -134,6 +139,8 @@ export const loader = async ({ request }) => {
         price: currentPrice,
         currentPrice,
         openingPrice: auctionData.openingAuctionPrice,
+        shopifyPrice,
+        shopifyCompareAt,
         reservePrice: auctionData.reservePrice,
         isAuctionRunning: auctionData.isAuctionRunning,
         nextDropInSeconds,
