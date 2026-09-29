@@ -1,0 +1,103 @@
+{% comment %}
+  Auction Live Price App Block
+{% endcomment %}
+
+<div
+  class="auction-price-app-block"
+  data-auction-price
+  data-auction-handle="{{ product.handle }}"
+  data-shop="{{ shop.permanent_domain }}"
+  style="display: inline-flex; align-items: center; gap: 10px; margin: 8px 0;"
+>
+  {% if product.compare_at_price > product.price %}
+    <s class="auction-compare-price" style="color: #777; font-size: 1.1em; text-decoration: line-through;">
+      {{ product.compare_at_price | money }}
+    </s>
+  {% else %}
+    <s class="auction-compare-price" style="color: #777; font-size: 1.1em; text-decoration: line-through; display: none;">
+    </s>
+  {% endif %}
+  <span class="auction-live-price" style="color: inherit; font-size: 1.4em; font-weight: bold;">
+    {{ product.price | money }}
+  </span>
+</div>
+
+<script>
+(function() {
+  const APP_URL = 'https://jewellry-auction.onrender.com';
+
+  function formatGBP(val) {
+    const num = Number(val);
+    if (!Number.isFinite(num)) return '';
+    return '£' + Math.round(num).toLocaleString('en-GB');
+  }
+
+  async function checkAndUpdate() {
+    const el = document.querySelector('.auction-price-app-block');
+    if (!el) return;
+
+    let handle = el.getAttribute('data-auction-handle');
+    if (!handle && window.location.pathname.includes('/products/')) {
+      handle = window.location.pathname.split('/products/')[1].split('?')[0].split('/')[0];
+    }
+    const shop = el.getAttribute('data-shop') || window.Shopify?.shop;
+    if (!handle || !shop) return;
+
+    try {
+      const res = await fetch(`${APP_URL}/api/price?shop=${encodeURIComponent(shop)}&handle=${encodeURIComponent(handle)}&t=${Date.now()}`, {
+        method: 'GET',
+        cache: 'no-store'
+      });
+      if (!res.ok) return;
+
+      const data = await res.json();
+      const compareTag = el.querySelector('.auction-compare-price');
+      const liveTag = el.querySelector('.auction-live-price');
+
+      // IF AUCTION IS STOPPED OR NOT ACTIVE:
+      // Revert back to standard Shopify Product Admin price (£3,133.50)
+      if (!data || !data.success || !data.isAuctionRunning) {
+        if (compareTag) compareTag.style.display = 'none';
+        if (liveTag) {
+          liveTag.style.color = 'inherit';
+          if (data && data.shopifyPrice) {
+            liveTag.textContent = formatGBP(data.shopifyPrice);
+          }
+        }
+        return;
+      }
+
+      // IF AUCTION IS RUNNING: Display live auction dropped price & strike-through opening price
+      if (compareTag && data.openingPrice) {
+        compareTag.style.display = 'inline-block';
+        compareTag.textContent = formatGBP(data.openingPrice);
+      }
+
+      if (liveTag && data.currentPrice) {
+        liveTag.style.color = '#d82c23';
+        liveTag.textContent = formatGBP(data.currentPrice);
+      }
+    } catch(e) {
+      console.error('[Auction Block] Error:', e);
+    }
+  }
+
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', checkAndUpdate);
+  } else {
+    checkAndUpdate();
+  }
+
+  setInterval(checkAndUpdate, 2000);
+})();
+</script>
+
+{% schema %}
+{
+  "name": "Auction Live Price",
+  "target": "section",
+  "stylesheet": "",
+  "javascript": "",
+  "settings": []
+}
+{% endschema %}
