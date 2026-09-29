@@ -14,7 +14,12 @@ export const loader = async ({ request }) => {
 
   const url = new URL(request.url);
   const handle = url.searchParams.get("handle");
+  const shop = url.searchParams.get("shop");
+
   let cleanShop = (shop || "").trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0];
+  if (cleanShop && !cleanShop.includes(".")) {
+    cleanShop += ".myshopify.com";
+  }
 
   if (!handle || !cleanShop) {
     return Response.json(
@@ -41,7 +46,10 @@ export const loader = async ({ request }) => {
                 }
               }
             }
-            auctionSettings: metafield(namespace: "custom", key: "auction_settings") {
+            auctionSettingsNew: metafield(namespace: "auction", key: "settings") {
+              value
+            }
+            auctionSettingsOld: metafield(namespace: "custom", key: "auction_settings") {
               value
             }
             customReservePrice: metafield(namespace: "custom", key: "reserve_price") {
@@ -88,9 +96,10 @@ export const loader = async ({ request }) => {
       auctionStartTime: null,
     };
 
-    if (product.auctionSettings?.value) {
+    const rawSettings = product.auctionSettingsNew?.value || product.auctionSettingsOld?.value;
+    if (rawSettings) {
       try {
-        const parsed = JSON.parse(product.auctionSettings.value);
+        const parsed = JSON.parse(rawSettings);
         auctionData = {
           openingAuctionPrice: parsed.openingAuctionPrice ?? defaultOpeningPrice,
           reservePrice: reservePriceFromCustom ?? (parsed.reservePrice ?? 0),
@@ -107,7 +116,7 @@ export const loader = async ({ request }) => {
     let nextDropInSeconds = 0;
     let hasReachedReserve = false;
 
-    // Only calculate dynamic drop price if auction is ACTIVE and running
+    // Only calculate price drop if auction is RUNNING (isAuctionRunning: true)
     if (auctionData.isAuctionRunning && auctionData.auctionStartTime) {
       const now = Date.now();
       const elapsedMs = Math.max(0, now - auctionData.auctionStartTime);
