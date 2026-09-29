@@ -109,7 +109,7 @@ export const loader = async ({ request }) => {
           isAuctionRunning: Boolean(parsed.isAuctionRunning),
           auctionStartTime: parsed.auctionStartTime ?? null,
         };
-      } catch (e) {}
+      } catch (e) { }
     }
 
     let currentPrice = shopifyPrice;
