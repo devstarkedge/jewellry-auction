@@ -9,3 +9,11 @@ services:
         value: production
       - key: PORT
         value: 3000
+      - key: SHOPIFY_APP_URL
+        sync: false
+      - key: SHOPIFY_API_KEY
+        sync: false
+      - key: SHOPIFY_API_SECRET
+        sync: false
+      - key: SCOPES
+        value: write_products
