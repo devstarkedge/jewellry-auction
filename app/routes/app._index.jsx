@@ -335,7 +335,7 @@ export const action = async ({ request }) => {
     if (productJson.data?.product?.metafield?.value) {
       try {
         currentSettings = JSON.parse(productJson.data.product.metafield.value);
-      } catch (e) {}
+      } catch (e) { }
     }
 
     const updatedPayload = {
@@ -599,7 +599,7 @@ export const action = async ({ request }) => {
         const existing = JSON.parse(productJson.data.product.metafield.value);
         isAuctionRunning = existing.isAuctionRunning ?? false;
         auctionStartTime = existing.auctionStartTime ?? null;
-      } catch (e) {}
+      } catch (e) { }
     }
 
     // 3. Save / Update auction configuration & custom metafields
@@ -856,15 +856,15 @@ export default function Index() {
           prev.map((p) =>
             p.id === fetcher.data.productId
               ? {
-                  ...p,
-                  price: fetcher.data.newPrice || p.price,
-                  auction: {
-                    ...p.auction,
-                    ...fetcher.data.auction,
-                    isAuctionRunning: fetcher.data.isAuctionRunning,
-                    auctionStartTime: fetcher.data.auctionStartTime,
-                  },
-                }
+                ...p,
+                price: fetcher.data.newPrice || p.price,
+                auction: {
+                  ...p.auction,
+                  ...fetcher.data.auction,
+                  isAuctionRunning: fetcher.data.isAuctionRunning,
+                  auctionStartTime: fetcher.data.auctionStartTime,
+                },
+              }
               : p
           )
         );
@@ -879,11 +879,11 @@ export default function Index() {
           prev.map((p) =>
             p.id === fetcher.data.productId
               ? {
-                  ...p,
-                  title: fetcher.data.title,
-                  compareAtPrice: fetcher.data.compareAtPrice || p.compareAtPrice,
-                  auction: fetcher.data.auction,
-                }
+                ...p,
+                title: fetcher.data.title,
+                compareAtPrice: fetcher.data.compareAtPrice || p.compareAtPrice,
+                auction: fetcher.data.auction,
+              }
               : p
           )
         );
@@ -1180,13 +1180,12 @@ export default function Index() {
                         {/* Status Column */}
                         <td>
                           <span
-                            className={`status-badge ${
-                              product.status === "ACTIVE"
+                            className={`status-badge ${product.status === "ACTIVE"
                                 ? "status-active"
                                 : product.status === "DRAFT"
-                                ? "status-draft"
-                                : "status-other"
-                            }`}
+                                  ? "status-draft"
+                                  : "status-other"
+                              }`}
                           >
                             <span className="status-dot"></span>
                             {product.status}
