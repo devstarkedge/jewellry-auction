@@ -24,7 +24,7 @@
 
 <script>
 (function() {
-  const APP_URL = window.SHOPIFY_AUCTION_APP_HOST || 'https://jewellry-auction.onrender.com';
+  const API_ENDPOINT = '/api/price';
 
   function formatGBP(val) {
     const num = Number(val);
@@ -36,7 +36,6 @@
     const el = document.querySelector('.auction-price-app-block');
     if (!el) return;
 
-    // 1. Get EXACT Product Handle
     let handle = el.getAttribute('data-auction-handle');
     if (!handle && window.location.pathname.includes('/products/')) {
       handle = window.location.pathname.split('/products/')[1].split('?')[0].split('/')[0];
@@ -45,8 +44,7 @@
     if (!handle || !shop) return;
 
     try {
-      // 2. Fetch API using THIS product's handle
-      const res = await fetch(`${APP_URL}/api/price?shop=${encodeURIComponent(shop)}&handle=${encodeURIComponent(handle)}&t=${Date.now()}`, {
+      const res = await fetch(`${API_ENDPOINT}?shop=${encodeURIComponent(shop)}&handle=${encodeURIComponent(handle)}&t=${Date.now()}`, {
         method: 'GET',
         cache: 'no-store'
       });
@@ -56,9 +54,8 @@
       const compareTag = el.querySelector('.auction-compare-price');
       const liveTag = el.querySelector('.auction-live-price');
 
-      // 🛑 IF THIS PRODUCT AUCTION IS STOPPED OR NOT RUNNING:
-      if (!data || !data.success || !data.isAuctionRunning) {
-        if (compareTag) compareTag.style.display = 'none';
+      if (!data || !data.success || data.isAuctionRunning === false) {
+        if (compareTag) compareTag.style.setProperty('display', 'none', 'important');
         if (liveTag) {
           liveTag.style.color = 'inherit';
           if (data && data.shopifyPrice) {
@@ -68,15 +65,14 @@
         return;
       }
 
-      // ▶️ IF THIS PRODUCT AUCTION IS RUNNING: Display dropped price & compare opening price
       const livePriceFormatted = formatGBP(data.currentPrice || data.price);
       const openingPriceFormatted = data.openingPrice ? formatGBP(data.openingPrice) : '';
 
       if (compareTag && openingPriceFormatted && data.openingPrice > (data.currentPrice || data.price)) {
-        compareTag.style.display = 'inline-block';
+        compareTag.style.setProperty('display', 'inline-block', 'important');
         compareTag.textContent = openingPriceFormatted;
       } else if (compareTag) {
-        compareTag.style.display = 'none';
+        compareTag.style.setProperty('display', 'none', 'important');
       }
 
       if (liveTag && livePriceFormatted) {
@@ -84,7 +80,7 @@
         liveTag.textContent = livePriceFormatted;
       }
     } catch(e) {
-      console.error('[Auction Block] Error:', e);
+      console.error('[Auction Block Error]', e);
     }
   }
 
@@ -94,8 +90,7 @@
     checkAndUpdate();
   }
 
-  // Real-time Ajax sync every 2 seconds by product handle
-  setInterval(checkAndUpdate, 2000);
+  setInterval(checkAndUpdate, 1500);
 })();
 </script>
 
