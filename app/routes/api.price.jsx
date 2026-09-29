@@ -14,17 +14,17 @@ export const loader = async ({ request }) => {
 
   const url = new URL(request.url);
   const handle = url.searchParams.get("handle");
-  const shop = url.searchParams.get("shop");
+  let cleanShop = (shop || "").trim().toLowerCase().replace(/^https?:\/\//, "").split("/")[0];
 
-  if (!handle || !shop) {
+  if (!handle || !cleanShop) {
     return Response.json(
-      { success: true, isAuctionRunning: false, price: 0, currentPrice: 0, openingPrice: 0 },
-      { headers: corsHeaders }
+      { success: false, error: "Missing handle or shop parameter" },
+      { headers: corsHeaders, status: 400 }
     );
   }
 
   try {
-    const { admin } = await unauthenticated.admin(shop);
+    const { admin } = await unauthenticated.admin(cleanShop);
 
     const response = await admin.graphql(
       `#graphql
